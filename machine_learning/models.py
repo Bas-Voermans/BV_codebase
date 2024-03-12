@@ -4,12 +4,21 @@ import os
 import pandas as pd
 import numpy as np
 
-from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import RepeatedStratifiedKFold,GridSearchCV
+from sklearn.metrics import roc_auc_score,root_mean_squared_error
+from sklearn.model_selection import RepeatedStratifiedKFold,RepeatedKFold,GridSearchCV
 from sklearn.ensemble import ExtraTreesClassifier,ExtraTreesRegressor
 
 from xgboost import XGBClassifier,XGBRegressor
 
+"""
+███    ███  ██████  ██████  ███████ ██      ███████ 
+████  ████ ██    ██ ██   ██ ██      ██      ██      
+██ ████ ██ ██    ██ ██   ██ █████   ██      ███████ 
+██  ██  ██ ██    ██ ██   ██ ██      ██           ██ 
+██      ██  ██████  ██████  ███████ ███████ ███████ 
+"""
+
+# Parameter grids for Extra Trees and XGBoost
 param_grid_xtr = {
     "n_estimators":[ 100, 300, 500, 800, ],
     "max_depth":[2 ,3, 5, None],
@@ -27,6 +36,7 @@ param_grid_xgb = {
     'colsample_bytree': [0.6, 0.8, 1.0],
 }
 
+
 def tree(
     X_train_val, y_train_val, X_test, y_test, 
     algo='xtr',
@@ -41,7 +51,12 @@ def tree(
     imp_algo = None,
     imp_algo_params={},
         ):
-        
+    
+    """
+    This function performs a grid search over the specified parameter grid for the specified algorithm.
+    It uses cross-validation and calculates scores for the training, validation, and test sets.
+    """
+
     # Initialize a dictionary to store the scores from the training, validation, and testing phases
     results_dict = {
         'train_scores':[],
@@ -50,7 +65,11 @@ def tree(
     }
 
     # Create a cross-validation strategy using Repeated Stratified K-Fold
-    splitter = RepeatedStratifiedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+    if task == 'classify':
+        splitter = RepeatedStratifiedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+    elif task == 'regression':
+        splitter = RepeatedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+
 
     # If the algorithm is Extra Trees (xtr), initialize the model based on the task (classification or regression)
     if algo == 'xtr':
@@ -61,7 +80,6 @@ def tree(
         if param_grid == None:
             param_grid = param_grid_xtr
         
-
     if algo == 'xgb':
         if task == 'classify':
             model = XGBClassifier()
@@ -70,13 +88,18 @@ def tree(
         if param_grid == None:
             param_grid = param_grid_xgb
 
+
+
     # If the task is classification, set the scoring metric to ROC AUC, for regression set to RMSE
     if scoring == None:
         if task=='classify':
             scoring='roc_auc'
             scoring_function = roc_auc_score
         elif task == 'regression':
-            scoring = 'squared_error'
+            scoring = 'neg_root_mean_squared_error'
+            scoring_function=root_mean_squared_error
+
+
 
     # Initialize a Grid Search CV object with the model, parameter grid, scoring metric, cross-validation strategy, and other parameters
     search=GridSearchCV(
@@ -96,16 +119,24 @@ def tree(
     if task=='classify':
         y_train_preds = best_model.predict_proba(X_train_val)[:,1]
         y_preds = best_model.predict_proba(X_test)[:,1]
-    elif task == 'regression':
-        y_train_preds = best_model.predict(X_train_val)
-        y_preds = best_model.predict(X_test)
 
-    # If the scoring metric is ROC AUC, calculate the scores for the training, validation, and test data
-    out_scores = [
+        out_scores = [
         scoring_function(y_train_val,y_train_preds),
         search.best_score_,
         scoring_function(y_test,y_preds)
         ]
+
+    elif task == 'regression':
+        y_train_preds = best_model.predict(X_train_val)
+        y_preds = best_model.predict(X_test)
+        
+        out_scores = [
+        scoring_function(y_train_val,y_train_preds),
+        -search.best_score_,
+        scoring_function(y_test,y_preds)
+        ]
+
+
 
     # Add the scores to the results dictionary and print them if verbose > 1
     for i,key in enumerate(results_dict.keys()):
@@ -114,6 +145,9 @@ def tree(
             print(key+':',np.mean(results_dict[key]))
     if verbosity > 1:
         print()
+    # Add the labels of the current shuffle to the results dictionary
+    results_dict['y_train_val'] = y_train_val
+    results_dict['y_test'] = y_test       
 
     # Add the model output to the results dictionary
     results_dict['y_train_preds'] = y_train_preds
@@ -125,6 +159,10 @@ def tree(
     results_dict['n_cv_repeats'] = n_cv_repeats
     results_dict['task'] = task
     results_dict['scoring'] = scoring
+
+
+
+
 
     # if required, add the feature importanes to the results dictionairy
     if return_importances:
