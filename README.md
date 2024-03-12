@@ -2,7 +2,7 @@
 My codebase of often used machine-learning and bioinformatics stuff. Developed for personal use, but free to share for colleagues and friends alike.
 
 ## Machine learning pipelines
-blablabla
+[tutorials/cirrhosis_classification.ipynb](https://github.com/Bas-Voermans/BV_codebase/blob/main/tutorials/cirrhosis_classification.ipynb) provides a practical example of one of the machine-learning pipelines available of this database. This the recommended starting point for fecal metagenomics analyses if you are not yet very familiar with the concept.
 
 ## Installing a Conda Environment from a `.yml` File
 
