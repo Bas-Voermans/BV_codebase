@@ -1,8 +1,30 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import pandas as pd
 
 from sklearn.metrics import roc_auc_score,roc_curve
+from statannotations.Annotator import Annotator
+from scipy import stats
+
+from matplotlib import rcParams
+import matplotlib
+
+import sys
+sys.path.append('C:\\Users\\basvo\\Documents\\GitHub\\BV_codebase')
+
+import machine_learning
+
+rcParams['font.weight'] = 'bold'
+
+color_p = ['#ca0020',
+'#f4a582',
+'#f7f7f7',
+'#92c5de',
+'#0571b0'][::-1]
+
+color_b = [color_p[0],color_p[-1]]
+cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", color_p)
 
 """
 ██████  ██       ██████  ████████ ████████ ██ ███    ██  ██████  
@@ -120,9 +142,12 @@ def imps_simple_barplot(results_dict, top_n=25):
     hue_plotting = np.ones_like(imps_plotting) * -1
 
     # Plot the bar plot
-    plt.figure(figsize=(10, 8))
-    sns.barplot(x=imps_plotting, y=feature_names_plotting, hue=hue_plotting, palette='vlag', legend=False)
-    plt.xlabel(u'abs( Δ AUC )')
+    fig = plt.figure(figsize=(10, 8))
+    b=sns.barplot(x=imps_plotting, y=feature_names_plotting, hue=hue_plotting, palette=color_b)
+    b.legend_.remove()
+    plt.xlabel(u'abs( Δscore )', weight='bold')
+
+    return fig
 
 
 def imps_directional_barplot(results_dict, top_n=25):
@@ -175,11 +200,89 @@ def imps_directional_barplot(results_dict, top_n=25):
     imps_plotting = imps_top_n.ravel()
 
     # Plot the bar plot
-    plt.figure(figsize=(10, 8))
-    ax = sns.barplot(x=imps_plotting, y=feature_names_plotting, hue=directions_plotting, palette='vlag')
+    fig = plt.figure(figsize=(10, 8))
+    ax = sns.barplot(x=imps_plotting, y=feature_names_plotting, hue=directions_plotting, palette=color_b)
     plt.axvline(0, linestyle='--', color='black')
     h, l = ax.get_legend_handles_labels()
     labels = ['Higher in class 0', 'Higher in class 1']
 
     ax.legend(h, labels, title="Direction of importance")
-    plt.xlabel(u'abs( Δ AUC )')
+    plt.xlabel(u'abs( Δscore )', weight='bold')
+
+    return fig
+
+def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind' ):
+    """
+    Generate a boxplot with t-test annotations for each unique value in the specified x variable.
+
+    Parameters:
+    df (pandas.DataFrame): The input dataframe.
+    x_var (str): The name of the column to be used for the x-axis.
+
+    Returns:
+    None
+    """
+    
+
+    # Create a new DataFrame with x_var and y_var columns
+    boxplot_data = pd.DataFrame({
+        y_var: df[y_var],
+        x_var: df[x_var]
+    })
+
+    # Plot boxplots for each unique value in the x_var column
+    ax = sns.boxplot(data=boxplot_data, x=x_var, y=y_var, palette=color_b)
+
+    # Add annotations with t-test results
+    tmp = [tuple(boxplot_data[x_var].unique())]
+    annot = Annotator(ax, tmp, data=boxplot_data, x=x_var, y=y_var,)
+    annot.configure(test=test)
+    annot.apply_test()
+    ax, test_results = annot.annotate()
+
+    # # Add horizontal line at y=50 (response treshold)
+    # ax.axhline(35, linestyle='--', color='black')
+
+    # Set labels and formatting
+    ax.set_ylabel(y_var, weight='bold')
+    ax.set_xlabel(x_var, weight='bold')
+    
+    # ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+    # plt.savefig('../../../figures/weightloss_boxplots/twl_'+x_var+'.pdf')
+
+    
+    fig = plt.gcf()
+    plt.show()
+    return fig
+
+def perm_test_boxplot(results_dict_true, results_dict_perm, task, omic, save=False):
+    if save:
+        filename_out = 'figures/'+omic+'_'+task+'.pdf'
+
+    scores_true = pd.DataFrame(results_dict_true['test_scores'])
+    scores_true.columns = [task+' score']
+    scores_true[omic+' run type'] = 'true '+task
+
+    scores_perm = pd.DataFrame(results_dict_perm['test_scores'])
+    scores_perm.columns = [task+' score']
+    scores_perm[omic+' run type'] = 'permuted '+task
+
+    scores_df = pd.concat([scores_true, scores_perm], axis=0)
+
+    fig = boxplot_with_test(scores_df, omic+' run type', task+' score')
+    if save:
+        fig.savefig(filename_out)
+
+def corrmap_top_feats(results_dict, topN=10):
+
+    top_feats = machine_learning.utils.return_top_feats(results_dict, top_n=topN)
+    X_top = machine_learning.utils.get_X_from_results_dict(results_dict)[top_feats]
+
+    corrs,_ = stats.spearmanr(X_top)
+    corrs = pd.DataFrame(corrs, index = top_feats, columns = top_feats)
+
+    ax = sns.clustermap(corrs,cmap='RdBu', vmin=-1,vmax=1)
+
+    fig = plt.gcf()
+    plt.show()
+    return fig

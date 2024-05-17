@@ -93,7 +93,7 @@ def sparsity_selection(df,minimum_non_zero_fraction):
     DataFrame: The dataframe with sparse columns removed.
     """
     # Calculate the fraction of non-zero values in each column
-    non_zero_fractions = np.sum(df > 0, axis=0)/len(df.columns)
+    non_zero_fractions = np.sum(df > 0, axis=0)/len(df.index)
 
     # Identify the columns that have a fraction of non-zero values greater than 'minimum_non_zero_fraction'
     kept_columns = non_zero_fractions>minimum_non_zero_fraction

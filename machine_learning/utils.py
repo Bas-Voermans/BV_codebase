@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import pickle
+import random
 
 from joblib import Parallel, delayed
 from tqdm import tqdm
@@ -116,6 +117,100 @@ def perform_stability_runs_classification(
     # Return the results dictionary
     return results_dict
 
+def perform_permutation_test_classification(
+    X,  # Feature matrix of the dataset
+    y,  # Label vector of the dataset
+    test_size,  # Fraction of samples used for evaluation
+    n_splits = 10,  # Number of stability runs to perform
+    feature_names = None,
+    method = models.tree, # Machine learning method
+    method_params = {}, # Additional parameters for the ML method (look at specific docs for the method)
+    return_importances = False, # Whether feature importances should be calculated or not
+    n_jobs=-1, # Number of parallelization jobs to use
+    verbosity=1, # Level of verbosity {0 : no printing whatsoever, 1 : running averages of performance, 2 : running average + run scores}
+):
+    """
+    This function performs stability runs for classification tasks.
+    It splits the data into training and testing sets multiple times,
+    fits the model, makes predictions, and calculates scores.
+    """
+    # Define the keys for the results dictionary
+    keys = [
+        'train_scores',
+        'val_scores',
+        'test_scores',
+        'y_train_val',
+        'y_train_preds',
+        'y_test',
+        'y_preds',
+        'feat_imps',
+    ]
+
+    # Define the keys for printing (these are train, val and test scores)
+    printing_keys = keys[:3]
+
+    for i in range(n_splits):
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size)
+
+        # SHUFFLE THE Y COLUMN!
+        y_rand = copy.deepcopy(y)
+        np.random.shuffle(y_rand)
+        y = copy.deepcopy(y_rand)
+
+
+        # Loop over the splits
+        for train_val,test in sss.split(X,y):
+            # Increment the counter
+            i+=1
+            # Split the data into training and testing sets
+            X_train_val, y_train_val = X[train_val], y[train_val]
+            X_test, y_test = X[test], y[test]
+
+            # Fit the model and make predictions
+            cur_results_dict = method(
+                X_train_val, 
+                y_train_val, 
+                X_test, 
+                y_test, 
+                return_importances=return_importances, 
+                n_jobs=n_jobs, 
+                verbosity=verbosity, 
+                **method_params
+                )
+            
+            # If this is the first split, initialize the results dictionary
+            if i == 1:
+                results_dict = cur_results_dict
+            # If this is the second split, convert the results to lists
+            elif i == 2:
+                for key in keys:
+                    results_dict[key] = [results_dict[key], cur_results_dict[key]]
+            # If this is the third or later split, append the results to the lists
+            else:
+                for key in keys:
+                    results_dict[key].append(cur_results_dict[key])
+        
+            # If verbosity is greater than 0, print the results
+            if verbosity > 0:
+                print('shuffle',i,'done')
+                for key in printing_keys:
+                    print(key+':',np.mean(results_dict[key]),'+\-',np.std(results_dict[key]))
+                print()
+
+    # add some input parameters to the results dictionairy
+    results_dict['X'] = X
+    results_dict['y'] = y
+    results_dict['n_splits'] = n_splits
+
+    
+    if feature_names != None:
+        results_dict['feature_names'] = feature_names
+    else:
+        results_dict['feature_names'] = range(np.shape(X)[1])
+
+    # Return the results dictionary
+    return results_dict
+
 def perform_stability_runs_regression(
     X,  # Feature matrix of the dataset
     y,  # continuous vector of the dataset
@@ -200,6 +295,108 @@ def perform_stability_runs_regression(
     # add some input parameters to the results dictionairy
     results_dict['X'] = X
     results_dict['y'] = y
+    results_dict['n_splits'] = n_splits
+
+    if feature_names != None:
+        results_dict['feature_names'] = feature_names
+    else:
+        results_dict['feature_names'] = range(np.shape(X)[1])
+
+    # Return the results dictionary
+    return results_dict
+
+
+def perform_permutation_test_regression(
+    X,  # Feature matrix of the dataset
+    y,  # continuous vector of the dataset
+    test_size,  # Fraction of samples used for evaluation
+    n_splits = 10,  # Number of stability runs to perform
+    n_quantiles = 3, # Number of quantiles to use for the stratifiedshufflesplit
+    feature_names = None,
+    method = models.tree, # Machine learning method
+    method_params = {}, # Additional parameters for the ML method (look at specific docs for the method)
+    return_importances = False, # Whether feature importances should be calculated or not
+    n_jobs=-1, # Number of parallelization jobs to use
+    verbosity=1, # Level of verbosity {0 : no printing whatsoever, 1 : running averages of performance, 2 : running average + run scores}
+):
+    """
+    This function performs stability runs for classification tasks.
+    It splits the data into training and testing sets multiple times,
+    fits the model, makes predictions, and calculates scores.
+    """
+
+    # Define the keys for the results dictionary
+    keys = [
+        'train_scores',
+        'val_scores',
+        'test_scores',
+        'y_train_preds',
+        'y_preds',
+        'feat_imps',
+    ]
+    
+    # Define the keys for printing (these are train, val and test scores)
+    printing_keys = keys[:3]
+
+    # Initialize the StratifiedShuffleSplit object
+
+    for i in range(n_splits):
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size)
+
+        # Initialize the counter
+        # i=0
+
+        # SHUFFLE THE Y COLUMN!
+        y_rand = copy.deepcopy(y)
+        np.random.shuffle(y_rand)
+        y = copy.deepcopy(y_rand)
+
+        # Use pandas qcut function to split y into n_quantiles with labels ranging from 0 to n_quantiles-1
+        y_quant = pd.qcut(y, n_quantiles, labels=False)
+
+        # Loop over the splits
+        for train_val,test in sss.split(X,y_quant):
+            # Increment the counter
+            i+=1
+
+            # Split the data into training and testing sets
+            X_train_val, y_train_val = X[train_val], y[train_val]
+            X_test, y_test = X[test], y[test]
+
+            # Fit the model and make predictions
+            cur_results_dict = method(
+                X_train_val, 
+                y_train_val, 
+                X_test, 
+                y_test, 
+                return_importances=return_importances, 
+                n_jobs=n_jobs, 
+                verbosity=verbosity, 
+                **method_params
+                )
+            
+            # If this is the first split, initialize the results dictionary
+            if i == 1:
+                results_dict = cur_results_dict
+            # If this is the second split, convert the results to lists
+            elif i == 2:
+                for key in keys:
+                    results_dict[key] = [results_dict[key], cur_results_dict[key]]
+            # If this is the third or later split, append the results to the lists
+            else:
+                for key in keys:
+                    results_dict[key].append(cur_results_dict[key])
+        
+            # If verbosity is greater than 0, print the results
+            if verbosity > 0:
+                print('shuffle',i,'done')
+                for key in printing_keys:
+                    print(key+':',np.mean(results_dict[key]),'+\-',np.std(results_dict[key]))
+                print()
+    
+    # add some input parameters to the results dictionairy
+    # results_dict['X'] = X
+    # results_dict['y'] = y
     results_dict['n_splits'] = n_splits
 
     if feature_names != None:
@@ -314,6 +511,8 @@ def save_results_dict(filename, results_dict):
     # Close the file
     f.close()
 
+
+
 def load_results_dict(filename):
     """
     Load a dictionary from a pickle file.
@@ -334,3 +533,32 @@ def load_results_dict(filename):
     file.close()
 
     return data
+
+def return_top_feats(results_dict, top_n=25):
+
+     # Extract feature names and importances from the results dictionary
+    feature_names = np.asarray(results_dict['feature_names'])
+    imps = np.asarray(results_dict['feat_imps'])
+
+    # Calculate the mean importances and get the indices that would sort the importances
+    mean_imps = np.mean(results_dict['feat_imps'], axis=0)
+    sorted_idx = np.argsort(mean_imps)[::-1]
+
+    # Sort the feature names and importances
+    feature_names = feature_names[sorted_idx]
+    imps = imps[:, sorted_idx]
+
+    # Get the top n feature names and importances
+    feature_names_top_n = feature_names[:top_n]
+
+    return feature_names_top_n
+
+def get_X_from_results_dict(results_dict):
+
+    X = results_dict['X']
+    
+    feat_names = results_dict['feature_names']
+
+    X = pd.DataFrame(X, columns=feat_names)
+
+    return X
