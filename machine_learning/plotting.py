@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score,roc_curve
 from statannotations.Annotator import Annotator
 from scipy import stats
+import statsmodels.api as sm
 
 from matplotlib import rcParams
 import matplotlib
@@ -37,6 +38,10 @@ CONTENTS"
 - auc_curves
 - imps_simple_barplot
 - imps_directional_barplot
+- boxplot_with_test
+- perm_test_boxplot
+- corrmap_top_feats
+- scatter_plot
 """
 
 def auc_curves(results_dict):
@@ -158,6 +163,7 @@ def imps_directional_barplot(results_dict, top_n=25):
     results_dict (dict): A dictionary containing feature names and their importances.
     top_n (int, optional): The number of top features to plot. Defaults to 25.
     """
+
     # Extract feature names, importances, X, and y from the results dictionary
     feature_names = np.asarray(results_dict['feature_names'])
     imps = np.asarray(results_dict['feat_imps'])
@@ -223,7 +229,6 @@ def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind' ):
     None
     """
     
-
     # Create a new DataFrame with x_var and y_var columns
     boxplot_data = pd.DataFrame({
         y_var: df[y_var],
@@ -285,4 +290,56 @@ def corrmap_top_feats(results_dict, topN=10):
 
     fig = plt.gcf()
     plt.show()
+    return fig
+
+def scatter_plot(df, x_var, y_var, p_value=None):
+    # Create a new DataFrame with x_var and y_var columns
+    boxplot_data = pd.DataFrame({
+        y_var: df[y_var],
+        x_var: df[x_var]
+    })
+
+
+    nancount = np.sum(np.sum(np.isnan(boxplot_data)))
+    
+    if nancount > 0:
+        print(f'{nancount} NaN values detected in the data. Dropping rows with NaN values.')
+
+    boxplot_data.dropna(axis=0, inplace=True)
+
+    # Plot boxplots for each unique value in the x_var column
+    ax = sns.scatterplot(data=boxplot_data, x=x_var, y=y_var)
+
+    # Calculate linear regression and RMSE
+    x = boxplot_data[x_var].values.reshape(-1, 1)
+    y = boxplot_data[y_var].values.reshape(-1, 1)
+    X = sm.add_constant(x)
+    linear_regression = sm.OLS(y, X).fit()
+    y_pred = linear_regression.predict(X)
+    rmse = np.sqrt(np.mean((y - y_pred) ** 2))
+
+    # Add linear trendline
+    ax.plot(x, y_pred, color='black', linestyle='-')
+
+    # Calculate Spearman correlation coefficient and p-value
+    if p_value == None:
+        spearman_rho, p_value = stats.spearmanr(boxplot_data[x_var], boxplot_data[y_var])
+    else:
+        spearman_rho, _ = stats.spearmanr(boxplot_data[x_var], boxplot_data[y_var])
+    
+
+    # Set labels and formatting
+    ax.set_ylabel(y_var)
+    ax.set_xlabel(x_var)
+    
+    if p_value > 0.0001:
+        ax.set_title(f"{y_var} vs. {x_var} \n (Spearman rho={spearman_rho:.3f}, p={p_value:.7f})\nRMSE={rmse:.3f}")
+    else:
+        ax.set_title(f"{y_var} vs. {x_var} \n (Spearman rho={spearman_rho:.3f}, p={p_value:.3e})\nRMSE={rmse:.3f}")
+
+
+    # plt.savefig('../../../figures/weightloss_correlations/adjusted_twl_'+x_var+'.pdf')
+
+    fig = plt.gcf()
+    # plt.show()
     return fig

@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score,root_mean_squared_error
 from sklearn.model_selection import RepeatedStratifiedKFold,RepeatedKFold,GridSearchCV
 from sklearn.ensemble import ExtraTreesClassifier,ExtraTreesRegressor
-
+from sklearn.linear_model import ElasticNetCV,LogisticRegressionCV,SGDClassifier
 from xgboost import XGBClassifier,XGBRegressor
 
 """
@@ -19,22 +19,93 @@ from xgboost import XGBClassifier,XGBRegressor
 """
 
 # Parameter grids for Extra Trees and XGBoost
+# param_grid_xtr = {
+#     "n_estimators":[ 100, 300, 500, 800, ],
+#     "max_depth":[2 ,3, 5, None],
+#     "min_samples_leaf":[1,5,7],
+#     "bootstrap": [False,True]
+# }
+
 param_grid_xtr = {
-    "n_estimators":[ 100, 300, 500, 800, ],
-    "max_depth":[2 ,3, 5, None],
-    "min_samples_leaf":[1,5,7],
-    "bootstrap": [False,True]
+    "n_estimators":[
+        # 100, 
+        # 200, 
+        # 300, 
+        # 500,
+        # 600,
+        # 700, 
+        800,
+        # 850,
+        900,
+        # 1000,
+        ],
+    "max_depth":[ 
+        # 7,
+        8,
+        9,
+        # 10,
+        ],
+    "min_samples_leaf":[
+        # 4,
+        5,
+        # 6,
+        # 7,
+        # 15,
+        ],
+    "bootstrap": [False]
 }
 
+
+
+# # Best
+# param_grid_xtr = {
+#     "n_estimators":[
+#         # 100, 
+#         # 200, 
+#         # 300, 
+#         # 500,
+#         # 600,
+#         # 700, 
+#         800,
+#         # 850,
+#         900,
+#         # 1000,
+#         ],
+#     "max_depth":[ 
+#         # 7,
+#         8,
+#         9,
+#         ],
+#     "min_samples_leaf":[
+#         # 4,
+#         # 5,
+#         6,
+#         # 15,
+#         ],
+#     "bootstrap": [False]
+# }
+
+
+# param_grid_xgb = {
+#     'max_depth': [2, 5, 7],
+#     'learning_rate': [0.01, 0.1],
+#     'n_estimators': [100, 300, 800, 1000, ],
+#     'min_child_weight': [1, 5],
+#     'gamma': [0.5, 2],
+#     'subsample': [0.5, 0.6, 0.8],
+#     'colsample_bytree': [0.6, 0.8, 1.0],
+# }
+
 param_grid_xgb = {
-    'max_depth': [2, 5, 7],
-    'learning_rate': [0.01, 0.1],
-    'n_estimators': [100, 300, 800, 1000, ],
-    'min_child_weight': [1, 5],
-    'gamma': [0.5, 2],
-    'subsample': [0.5, 0.6, 0.8],
-    'colsample_bytree': [0.6, 0.8, 1.0],
+    'max_depth': [2, 3, 5, 7],
+    'learning_rate': [0.01, 0.025, 0.05, 0.1],
+    'n_estimators': [ 500, 800, 1000],
+    # 'min_child_weight': [1, 5],
+    # 'gamma': [0.5, 2],
+    # 'subsample': [ 0.8, None],
+    # 'colsample_bytree': [0.6, 0.8, 1.0],
 }
+
 
 
 def tree(
@@ -170,6 +241,118 @@ def tree(
             feat_imps = best_model.feature_importances_
         else:
             feat_imps = imp_algo(best_model, X_test, y_test, scoring_function, task=task, verbosity=verbosity, **imp_algo_params)
+
+        results_dict['feat_imps'] = feat_imps
+    else:
+        results_dict['feat_imps'] = None
+
+    return results_dict
+
+
+def simple_regression(
+    X_train_val, y_train_val, X_test, y_test, 
+    algo='simple',
+    task='classify',
+    scoring=None,
+    param_grid=None,
+    n_cv_folds = 3,
+    n_cv_repeats = 1,
+    n_jobs=-1,
+    verbosity=0,
+    return_importances = False,
+    imp_algo = None,
+    imp_algo_params={},
+        ):
+    
+    results_dict = {
+        'train_scores':[],
+        'val_scores':[],
+        'test_scores':[],
+    }
+
+        # If the algorithm is Extra Trees (xtr), initialize the model based on the task (classification or regression)
+    if algo == 'simple':
+        if task == 'classify':
+            splitter = RepeatedStratifiedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+            model = LogisticRegressionCV(
+                cv=splitter,
+                solver='saga', 
+                max_iter=10000000,
+            )
+        if param_grid == None:
+            param_grid = None
+    if algo == 'elasticnet':
+        if task == 'classify':
+            splitter = RepeatedStratifiedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+            model = ElasticNetCV(
+                max_iter=10000000,
+                cv=splitter
+            )
+        if param_grid == None:
+            param_grid = None
+    if algo == 'svm':
+        if task == 'classify':
+            splitter = RepeatedStratifiedKFold(n_splits=n_cv_folds, n_repeats=n_cv_repeats)
+            model = SGDClassifier(
+                loss='hinge',
+                penalty='l2',
+                max_iter=10000000,
+                n_jobs=n_jobs
+            )
+        if param_grid == None:
+            param_grid = None
+        
+    # If the task is classification, set the scorsing metric to ROC AUC, for regression set to RMSE
+    if scoring == None:
+        if task=='classify':
+            scoring='roc_auc'
+            scoring_function = roc_auc_score
+        elif task == 'regression':
+            scoring = 'neg_root_mean_squared_error'
+            scoring_function=root_mean_squared_error
+
+    model.fit(X_train_val,y_train_val)
+
+    # Make predictions on the training and test data based on the task
+    if task=='classify':
+        if algo == 'simple':
+            y_train_preds = model.predict_proba(X_train_val)[:,1]
+            y_preds = model.predict_proba(X_test)[:,1]
+        else:
+            y_train_preds = model.predict(X_train_val)
+            y_preds = model.predict(X_test)
+        out_scores = [
+        scoring_function(y_train_val,y_train_preds),
+        np.nan,
+        scoring_function(y_test,y_preds)
+        ]
+
+    # Add the scores to the results dictionary and print them if verbose > 1
+    for i,key in enumerate(results_dict.keys()):
+        results_dict[key].append(out_scores[i])
+        if verbosity > 1:
+            print(key+':',np.mean(results_dict[key]))
+    if verbosity > 1:
+        print()
+    # Add the labels of the current shuffle to the results dictionary
+    results_dict['y_train_val'] = y_train_val
+    results_dict['y_test'] = y_test       
+
+    # Add the model output to the results dictionary
+    results_dict['y_train_preds'] = y_train_preds
+    results_dict['y_preds'] = y_preds
+
+    # Add the model parameters to the results dictionary
+    results_dict['algo'] = algo
+    results_dict['task'] = task
+    results_dict['scoring'] = scoring
+
+    # if required, add the feature importanes to the results dictionairy
+    if return_importances:
+        if imp_algo == None:
+            feat_imps = model.coef_
+        else:
+            feat_imps = imp_algo(model, X_test, y_test, scoring_function, task=task, verbosity=verbosity, **imp_algo_params)
 
         results_dict['feat_imps'] = feat_imps
     else:

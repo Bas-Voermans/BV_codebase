@@ -17,6 +17,41 @@ import numpy as np
  - process_species_names
                                                                                                                                                                                                                                                                                      
 """
+def get_relative_abundance(df):
+
+    """
+    This function calculates the relative abundance of each species in the dataframe.
+    
+    Parameters:
+    df (DataFrame): The input dataframe.
+    
+    Returns:
+    DataFrame: The dataframe with the relative abundance of each species.
+    """
+    # Calculate the total abundance of each sample
+    total_abundance = np.sum(df, axis=1)
+
+    # Divide the abundance of each species by the total abundance of the sample
+    df_out = df.div(total_abundance, axis=0)
+    df_out = df_out*100.0
+
+    return df_out
+
+def transform_spurious_species(df, threshold = 0.001):
+    """
+    This function transforms the species with abundance less than a threshold to zero.
+    
+    Parameters:
+    df (DataFrame): The input dataframe.
+    threshold (float): The threshold value below which the abundance of a species is set to zero.
+    
+    Returns:
+    DataFrame: The dataframe with the spurious species transformed to zero.
+    """
+    # Set the abundance of species with abundance less than the threshold to zero
+    df_out = df.where(df > threshold, 0)
+
+    return df_out
 
 def remove_all_zero_species(df):
     """
