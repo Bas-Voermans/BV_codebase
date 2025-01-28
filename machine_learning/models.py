@@ -37,7 +37,7 @@ param_grid_xtr = {
         800,
         # 850,
         900,
-        # 1000,
+        # 1000,s
         ],
     "max_depth":[ 
         # 7,
@@ -346,6 +346,7 @@ def simple_regression(
     results_dict['algo'] = algo
     results_dict['task'] = task
     results_dict['scoring'] = scoring
+    results_dict['model'] = model
 
     # if required, add the feature importanes to the results dictionairy
     if return_importances:

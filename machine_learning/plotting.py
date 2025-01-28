@@ -217,7 +217,7 @@ def imps_directional_barplot(results_dict, top_n=25):
 
     return fig
 
-def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind' ):
+def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind', ax = None, pvalue=None):
     """
     Generate a boxplot with t-test annotations for each unique value in the specified x variable.
 
@@ -235,9 +235,18 @@ def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind' ):
         x_var: df[x_var]
     })
 
-    # Plot boxplots for each unique value in the x_var column
-    ax = sns.boxplot(data=boxplot_data, x=x_var, y=y_var, palette=color_b)
+    #drop the nans in the data
+    nancount = np.sum(np.sum(np.isnan(boxplot_data)))
 
+    if nancount > 0:
+        print(f'{nancount} NaN values detected in the data. Dropping rows with NaN values.')
+        boxplot_data.dropna(axis=0, inplace=True)
+
+    if ax == None:
+        ax = sns.boxplot(data=boxplot_data, x=x_var, y=y_var, palette=color_b, showfliers=False)
+    else:
+        sns.boxplot(data=boxplot_data, x=x_var, y=y_var, ax=ax, palette=color_b, showfliers=False)
+        
     # Add annotations with t-test results
     tmp = [tuple(boxplot_data[x_var].unique())]
     annot = Annotator(ax, tmp, data=boxplot_data, x=x_var, y=y_var,)
@@ -255,12 +264,14 @@ def boxplot_with_test(df, x_var, y_var = 'twl', test='t-test_ind' ):
     # ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
     # plt.savefig('../../../figures/weightloss_boxplots/twl_'+x_var+'.pdf')
 
-    
-    fig = plt.gcf()
-    plt.show()
-    return fig
+    if ax == None:
+        fig = plt.gcf()
+        plt.show()
+        return fig
+    else:
+        return ax
 
-def perm_test_boxplot(results_dict_true, results_dict_perm, task, omic, save=False):
+def perm_test_boxplot(results_dict_true, results_dict_perm, task, omic, save=False, ax=None):
     if save:
         filename_out = 'figures/'+omic+'_'+task+'.pdf'
 
@@ -274,7 +285,11 @@ def perm_test_boxplot(results_dict_true, results_dict_perm, task, omic, save=Fal
 
     scores_df = pd.concat([scores_true, scores_perm], axis=0)
 
-    fig = boxplot_with_test(scores_df, omic+' run type', task+' score')
+    if ax == None:
+        fig = boxplot_with_test(scores_df, omic+' run type', task+' score')
+    else:
+        ax = boxplot_with_test(scores_df, omic+' run type', task+' score', ax=ax)
+        return ax
     if save:
         fig.savefig(filename_out)
 
